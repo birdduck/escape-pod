@@ -1,0 +1,27 @@
+{
+  "name": "escape-pod",
+  "version": "0.0.1",
+  "description": "It must be a decoy.",
+  "bin": {
+    "escape-pod": "index.js"
+  },
+  "dependencies": {
+    "express": "^4.16.3",
+    "mime-types": "^2.1.18",
+    "moment": "^2.22.1",
+    "moment-timezone": "^0.5.17",
+    "nan": "^2.10.0",
+    "rimraf": "^2.6.2",
+    "taglib2": "^2.9.6"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=8.5.0"
+  },
+  "author": "Birdduck Software",
+  "license": "ISC",
+  "repository": "https://github.com/birdduck/escape-pod"
+}
