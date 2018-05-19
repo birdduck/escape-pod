@@ -12,7 +12,6 @@
 
 (def fs (nodejs/require "fs"))
 (def path (nodejs/require "path"))
-(def express (nodejs/require "express"))
 (def moment (nodejs/require "moment-timezone"))
 (def rimraf (nodejs/require "rimraf"))
 (def taglib (nodejs/require "taglib2"))
@@ -316,70 +315,16 @@
   (.then (load-site! options)
          #(write-site! % options)))
 
-(defn load-site-middleware! [options]
-  (fn [req res nxt]
-    (-> (load-site! options)
-        (.then #(do
-                  (gobj/set req "site" %)
-                  (nxt)))
-        (.catch #(nxt %)))))
-
-(defn load-episode-middleware! [req res nxt]
-  (let [title (.. req -params -title)
-        {:keys [state]} (.. req -site)]
-    (if-some [episode (first
-                        (filter #(= title (str/uslug (get % :title)))
-                                (get state :episodes)))]
-      (do
-        (gobj/set req "episode" episode)
-        (nxt))
-      (.sendStatus res 404))))
-
-(defn serve! [{:keys [port] :as options}]
-  (doto (express)
-    (.use (load-site-middleware! options))
-    (.get "/"
-          (fn [req res]
-            (.send res (get (.. req -site) :html))))
-    (.get "/episodes/:title"
-          load-episode-middleware!
-          (fn [req res]
-            (.send res (render-html (merge (get (.. req -site) :state)
-                                           {:episodes [(.. req -episode)]})))))
-    (.get "/episodes/:title/:filename"
-          load-episode-middleware!
-          (fn [req res]
-            (let [{:keys [dir]} (.. req -episode)
-                  filename (.. req -params -filename)]
-              (.sendFile res (str dir "/" (.basename path filename))
-                             #js {:root (.cwd js/process)}
-                             #(when %
-                                (.error js/console %))))))
-    (.get "/manifest.json"
-          (fn [req res]
-            (.send res (get (.. req -site) :manifest))))
-    (.get "/rss/podcast.rss"
-          (fn [req res]
-            (doto res
-              (.setHeader "Content-Type" "application/rss+xml")
-              (.send (get (.. req -site) :rss)))))
-    (.listen port #(println "Open the pod bay doors at"
-                            (str "http://localhost:" port)))))
-
 (def cli-options
   [["-c" "--config PATH" "Configuration path"
     :default "./config.edn"]
-   ["-p" "--port PORT" "Port number"
-    :default (or (env-var "PORT") 5000)
-    :parse-fn #(js/parseInt %)
-    :validate [#(< 0 % 0x10000) "Must be a number between 0 and 65536"]]
    ["-h" "--help"]])
 
 (defn validate-args [args]
   (let [{:keys [options arguments errors summary]} (parse-opts args cli-options)]
     (cond
       (and (= 1 (count arguments))
-           (#{"build" "serve"} (first arguments)))
+           (#{"build"} (first arguments)))
       {:action (first arguments) :options options})))
 
 (defn exit [status msg]
@@ -391,7 +336,6 @@
     (if exit-message
       (exit (if ok? 0 1) exit-message)
       (case action
-        "build" (build! options)
-        "serve" (serve! options)))))
+        "build" (build! options)))))
 
 (set! *main-cli-fn* -main)
