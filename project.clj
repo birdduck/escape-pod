@@ -20,4 +20,5 @@
                                    :output-to "index.js"
                                    :optimizations :advanced
                                    :parallel-build true
+                                   :source-map "index.js.map"
                                    :target :nodejs}}]})

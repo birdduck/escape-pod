@@ -12,6 +12,7 @@
 
 (def fs (nodejs/require "fs"))
 (def path (nodejs/require "path"))
+(def favicons (nodejs/require "favicons"))
 (def moment (nodejs/require "moment-timezone"))
 (def rimraf (nodejs/require "rimraf"))
 (def taglib (nodejs/require "taglib2"))
@@ -19,11 +20,17 @@
 
 (nodejs/enable-util-print!)
 
-(defn env-var [v]
-  (gobj/get js/process.env v))
-
 (defn emojify [s]
   (.parse js/twemoji s))
+
+(defn html->hiccup [s]
+  (let [tag (subs (first (str/split s #"\s+")) 1)
+        attrs (re-seq #"(\w\w+)=\"([^\"]*)\"" s)]
+    [(keyword tag) (reduce
+                     (fn [o [_ k v]]
+                       (merge o (hash-map (keyword k) v)))
+                     {}
+                     attrs)]))
 
 (defn read-file! [path]
   (js/Promise.
@@ -36,10 +43,10 @@
 (defn write-file! [path contents]
   (js/Promise.
     (fn [res rej]
-      (.writeFile fs path contents "utf8" (fn [err]
-                                            (if err
-                                              (rej err)
-                                              (res)))))))
+      (.writeFile fs path contents (fn [err]
+                                     (if err
+                                       (rej err)
+                                       (res)))))))
 
 (defn read-edn! [path]
   (.then (read-file! path)
@@ -52,6 +59,7 @@
                         (if err
                           (rej err)
                           (res)))))))
+
 (defn rmdir [path]
   (js/Promise.
     (fn [res rej]
@@ -153,13 +161,31 @@
     [:audio.w-100 {:controls "controls" :style "z-index: 0;"}
      [:source {:src url :type mime-type}]]]])
 
-(defn twitter-card [{:keys [base-url cover? image site title description]}]
+(defn structured-data [{:keys [cover? filename image social title url] :or {image "cover.jpg"}}]
+  [:script {:type "application/ld+json"}
+   (js/JSON.stringify
+     (clj->js (merge {"@context" "http://schema.org"
+                      "@type" "Organization"
+                      :name title
+                      :url url
+                      :sameAs (map (fn [channel]
+                                     (let [id (get social channel)]
+                                       (condp = channel
+                                         :twitter (str "https://twitter.com/" id)
+                                         :youtube (str "https://www.youtube.com/channel/" id))))
+                                   (keys social))}
+                     (when cover?
+                       {:logo (str url "/" image)}))))])
+
+(defn twitter-card [{:keys [base-url cover? filename image site title description mime-type]}]
   [[:meta {:name "twitter:card" :content "summary"}]
    [:meta {:name "twitter:site" :content site}]
    [:meta {:name "twitter:creator" :content site}]
    [:meta {:property "og:url" :content (str base-url "/episodes/" (str/uslug title))}]
    [:meta {:property "og:title" :content title}]
    [:meta {:property "og:description" :content description}]
+   [:meta {:property "og:audio" :content (str base-url "/episodes/" (str/uslug title) "/" filename)}]
+   [:meta {:property "og:audio:type" :content mime-type}]
    (when cover?
      [:meta {:property "og:image"
              :content (str base-url "/episodes/" (str/uslug title) "/" image)}])])
@@ -170,7 +196,7 @@
                     :margin "0 .05em 0 .1em"
                     :vertical-align "-0.1em"}]))
 
-(defn markup [{:keys [description email episodes explicit? language title author url]
+(defn markup [{:keys [description email episodes explicit? language manifest title author url]
                :or {author title
                     language "en-us"}
                :as config}]
@@ -187,19 +213,20 @@
                                                   description
                                                   (get (first episodes) :description))}]
            [:meta {:name "viewport" :content"width=device-width, initial-scale=1, shrink-to-fit=no"}]
-           [:meta {:name "theme-color" :content="#ffffff"}]
-           [:link {:rel "manifest" :href (str url "/manifest.json")}]
            [:link {:rel "stylesheet"
                    :href "https://unpkg.com/tachyons@4.9.1/css/tachyons.min.css"}]]
+          (for [el (get manifest :elements)]
+            el)
           [:style (style)]
           (if (> (count episodes) 1)
             [[:link {:rel "alternate"
                     :type "application/rss+xml"
                     :title title
-                    :href (str url "/rss/podcast.rss")}]]
+                    :href (str url "/rss/podcast.rss")}]
+             (structured-data config)]
             (when-some [site (get-in config [:social :twitter])]
               (twitter-card (merge (first episodes)
-                                   {:base-url url :site site})))))
+                                   {:base-url url :site (str "@" site)})))))
    [:body.system-sans-serif
     [:section
      [:header.bg-white.fixed.w-100.ph3.pv3 {:style "z-index: 1;"}
@@ -211,14 +238,40 @@
             (episode->article (merge episode {:base-url url})))
           episodes)]]])
 
-(defn manifest [{:keys [title] :as config}]
-  (js/JSON.stringify
-    #js {"name" title
-         "short_name" title
-         "start_url" "/"
-         "display" "standalone"
-         "background_color" "#FFFFFF"
-         "theme-color" "#FFFFFF"}))
+(defn generate-manifest [{:keys [url cover? image title description] :or {image "cover.jpg"}}]
+  (js/Promise.
+    (fn [res rej]
+      (favicons (str "site/" image)
+                #js {:appName title
+                     :appDescription description
+                     :display "standalone"
+                     :start_url "/"
+                     :url url}
+                (fn [err response]
+                  (if err
+                    (rej err)
+                    (res {:resources (map (fn [resource]
+                                            {:name (gobj/get resource "name")
+                                             :contents (gobj/get resource "contents")})
+                                          (concat (gobj/get response "images")
+                                                  (gobj/get response "files")))
+                          :elements (map (fn [html]
+                                           (let [[tag attributes] (html->hiccup html)]
+                                             [tag (reduce (fn [o k]
+                                                            (let [v (get attributes k)]
+                                                              (merge o (hash-map k (if (str/starts-with? v "/")
+                                                                                     (str url v)
+                                                                                     v)))))
+                                                          {}
+                                                          (keys attributes))]))
+                                         (gobj/get response "html"))})))))))
+
+(defn write-manifest! [output-dir {:keys [resources] :as manifest}]
+  (js/Promise.all
+    (map (fn [resource]
+           (write-file! (str output-dir "/" (get resource :name))
+                        (get resource :contents)))
+         resources)))
 
 (defn load-episode! [dir source]
   (.then (read-edn! (str dir source))
@@ -255,15 +308,21 @@
 
 (defn load-site! [{:keys [config]}]
   (.then
-    (js/Promise.all
-      [(read-edn! config)
-       (load-episodes! "site/episodes")])
-    (fn [[config episodes]]
+    (.then
+      (js/Promise.all
+        [(read-edn! config)
+         (load-episodes! "site/episodes")])
+      (fn [[config episodes]]
+        (.then (generate-manifest config)
+               (fn [manifest]
+                 {:config config :episodes episodes :manifest manifest}))))
+    (fn [{:keys [config episodes manifest]}]
       (let [image (get config :image "cover.jpg")
             state (merge config {:cover? (and image (.existsSync fs (str "site/" image)))
+                                 :manifest manifest
                                  :episodes episodes})]
         {:state state
-         :manifest (manifest config)
+         :manifest manifest
          :html (render-html state)
          :rss (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                    (html (rss-feed state)))}))))
@@ -281,18 +340,14 @@
       (fn  []
         (let  [image (get state :image "cover.jpg")
                cover? (get state :cover?)
-               promises [(write-file! (str output-dir "/index.html") html)
-                         (write-file! (str output-dir "/manifest.json") manifest)
+               promises [(write-manifest! output-dir manifest)
+                         (write-file! (str output-dir "/index.html") html)
                          (write-file! (str output-dir "/rss/podcast.rss") rss)]]
           (js/Promise.all
             (if cover?
               (conj promises (copy-file (str "site/" image)
                                         (str output-dir "/" image)))
-              promises))))
-      #(js/Promise.all
-         [(write-file! (str output-dir "/index.html") html)
-          (write-file! (str output-dir "/manifest.json") manifest)
-          (write-file! (str output-dir "/rss/podcast.rss") rss)])) 
+              promises)))))
     (fn []
       (js/Promise.all
         (map (fn [{:keys [cover? dir filename image origin title]

@@ -6,6 +6,8 @@ moment.tz = {};
 moment.tz.guess = function () {};
 moment.prototype.format = function () {};
 
+var favicons = function (source, settings, callback) {};
+
 var fs = {};
 fs.copyFile = function (source, destination, callback) {};
 
