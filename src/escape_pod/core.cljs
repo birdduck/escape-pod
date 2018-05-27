@@ -311,12 +311,15 @@
     (.then
       (js/Promise.all
         [(read-edn! config)
-         (load-episodes! "site/episodes")])
-      (fn [[config episodes]]
+         (load-episodes! "site/episodes")
+         (if (.existsSync fs "site/robots.txt")
+           (read-file! "site/robots.txt")
+           (js/Promise.resolve ""))])
+      (fn [[config episodes robots-txt]]
         (.then (generate-manifest config)
                (fn [manifest]
-                 {:config config :episodes episodes :manifest manifest}))))
-    (fn [{:keys [config episodes manifest]}]
+                 {:config config :episodes episodes :manifest manifest :robots robots-txt}))))
+    (fn [{:keys [config episodes manifest robots]}]
       (let [image (get config :image "cover.jpg")
             state (merge config {:cover? (and image (.existsSync fs (str "site/" image)))
                                  :manifest manifest
@@ -324,10 +327,11 @@
         {:state state
          :manifest manifest
          :html (render-html state)
+         :robots robots
          :rss (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                    (html (rss-feed state)))}))))
 
-(defn write-site! [{:keys [state html manifest rss]}
+(defn write-site! [{:keys [state html manifest robots rss]}
                    {:keys [output-dir] :or {output-dir "./www"} :as options}]
   (.then
     (.then
@@ -341,6 +345,7 @@
         (let  [image (get state :image "cover.jpg")
                cover? (get state :cover?)
                promises [(write-manifest! output-dir manifest)
+                         (write-file! (str output-dir "/robots.txt") robots)
                          (write-file! (str output-dir "/index.html") html)
                          (write-file! (str output-dir "/rss/podcast.rss") rss)]]
           (js/Promise.all
