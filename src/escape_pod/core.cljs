@@ -13,10 +13,10 @@
 (def fs (nodejs/require "fs"))
 (def path (nodejs/require "path"))
 (def favicons (nodejs/require "favicons"))
+(def mime-types (nodejs/require "mime-types"))
 (def moment (nodejs/require "moment-timezone"))
 (def rimraf (nodejs/require "rimraf"))
 (def taglib (nodejs/require "taglib2"))
-(def mime-types (nodejs/require "mime-types"))
 
 (nodejs/enable-util-print!)
 
@@ -76,17 +76,43 @@
                                            (rej err)
                                            (res)))))))
 
+(defn is-file? [source]
+  (.isFile (.lstatSync fs source)))
+
 (defn is-directory? [source]
   (.isDirectory (.lstatSync fs source)))
 
+(defn get-fs-objects!
+  ([source] (get-fs-objects! identity source))
+  ([pred source]
+   (js/Promise.
+     (fn [res rej]
+       (.readdir fs source (fn [err files]
+                             (if err
+                               (rej err)
+                               (res (filter pred
+                                            (map #(.join path source %)
+                                                 files))))))))))
+
+(defn get-files! [source]
+  (get-fs-objects! is-file? source))
+
 (defn get-directories [source]
-  (js/Promise.
-    (fn [res rej]
-      (.readdir fs source (fn [err result]
-                            (if (some? err)
-                              (rej err)
-                              (res (filter is-directory?
-                                           (map #(.join path source %) result)))))))))
+  (get-fs-objects! is-directory? source))
+
+(defn get-paths
+  ([source]
+   (get-paths source (gobj/get path "sep")))
+  ([source sep]
+   (loop [paths (str/split source sep)
+          results #{}]
+      (if (empty? paths)
+        results
+        (recur (rest paths)
+               (conj results
+                     (str/join sep
+                               (remove nil?
+                                       [(last results) (first paths)]))))))))
 
 (defn episodes-tx [episodes]
   (let [offset (atom 0)]
@@ -266,13 +292,6 @@
                                                           (keys attributes))]))
                                          (gobj/get response "html"))})))))))
 
-(defn write-manifest! [output-dir {:keys [resources] :as manifest}]
-  (js/Promise.all
-    (map (fn [resource]
-           (write-file! (str output-dir "/" (get resource :name))
-                        (get resource :contents)))
-         resources)))
-
 (defn load-episode! [dir source]
   (.then (read-edn! (str dir source))
          (fn [{:keys [image filename]
@@ -311,65 +330,87 @@
     (.then
       (js/Promise.all
         [(read-edn! config)
-         (load-episodes! "site/episodes")
-         (if (.existsSync fs "site/robots.txt")
-           (read-file! "site/robots.txt")
-           (js/Promise.resolve ""))])
-      (fn [[config episodes robots-txt]]
+         (get-files! "site")
+         (load-episodes! "site/episodes")])
+      (fn [[config files episodes]]
         (.then (generate-manifest config)
                (fn [manifest]
-                 {:config config :episodes episodes :manifest manifest :robots robots-txt}))))
-    (fn [{:keys [config episodes manifest robots]}]
+                 {:config config :episodes episodes :files files :manifest manifest}))))
+    (fn [{:keys [config episodes files manifest]}]
       (let [image (get config :image "cover.jpg")
             state (merge config {:cover? (and image (.existsSync fs (str "site/" image)))
                                  :manifest manifest
                                  :episodes episodes})]
         {:state state
-         :manifest manifest
-         :html (render-html state)
-         :robots robots
-         :rss (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-                   (html (rss-feed state)))}))))
+         :files files
+         :manifest manifest}))))
 
-(defn write-site! [{:keys [state html manifest robots rss]}
-                   {:keys [output-dir] :or {output-dir "./www"} :as options}]
-  (.then
+(defn write-files! [files]
+  (js/Promise.all
+    (map
+      (fn [{:keys [content dest operation src]}]
+        (condp = operation
+          :copy (copy-file src dest)
+          :write (write-file! dest content)))
+      files)))
+
+(defn promise-serial [fns]
+  (reduce
+    (fn [p f]
+      (.then p (fn [result]
+                 (.then (f) #(conj result %)))))
+      (js/Promise.resolve [])
+      fns))
+
+(defn write-site! [{:keys [state manifest files]}
+                    {:keys [output-dir] :or {output-dir "./www"}}]
+  (let [site-files (concat
+                     (map (fn [f]
+                            {:operation :copy
+                             :src f
+                             :dest (.join path output-dir (.basename path f))})
+                          files)
+                     (map (fn [resource]
+                            {:operation :write
+                             :content (get resource :contents)
+                             :dest (.join path output-dir (get resource :name))})
+                          (get manifest :resources))
+                     [{:operation :write
+                        :content (render-html state)
+                        :dest (.join path output-dir "index.html")}
+                      {:operation :write
+                        :content (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                                      (html (rss-feed state)))
+                        :dest (.join path output-dir "rss/podcast.rss")}]
+                     (reduce
+                       (fn [m {:keys [cover? dir filename image origin title] :as episode}]
+                         (let [episode-output-dir (.join path output-dir "episodes" (str/uslug title))]
+                           (concat m
+                                   [{:operation :write
+                                     :content (render-html (merge state {:episodes [episode]}))
+                                     :dest (.join path episode-output-dir "index.html")}
+                                    {:operation :copy
+                                     :src origin
+                                     :dest (.join path episode-output-dir filename)}]
+                                   (when cover?
+                                     [{:operation :copy
+                                      :src (.join path dir image)
+                                      :dest (.join path episode-output-dir image)}]))))
+                       []
+                       (get state :episodes)))]
     (.then
-      (.then
-        (.then (rmdir output-dir)
-               #(mkdir output-dir))
-        #(js/Promise.all
-           [(mkdir (str output-dir "/episodes"))
-            (mkdir (str output-dir "/rss"))]))
-      (fn  []
-        (let  [image (get state :image "cover.jpg")
-               cover? (get state :cover?)
-               promises [(write-manifest! output-dir manifest)
-                         (write-file! (str output-dir "/robots.txt") robots)
-                         (write-file! (str output-dir "/index.html") html)
-                         (write-file! (str output-dir "/rss/podcast.rss") rss)]]
-          (js/Promise.all
-            (if cover?
-              (conj promises (copy-file (str "site/" image)
-                                        (str output-dir "/" image)))
-              promises)))))
-    (fn []
-      (js/Promise.all
-        (map (fn [{:keys [cover? dir filename image origin title]
-                   :as episode}]
-               (let [episode-dir (str output-dir "/episodes/" (str/uslug title))]
-                 (.then (mkdir episode-dir)
-                        (fn []
-                          (let [promises [(write-file! (str episode-dir "/index.html")
-                                                       (render-html (merge state {:episodes [episode]})))
-                                          (copy-file origin (str episode-dir "/" filename))]]
-                            (js/Promise.all
-                              (if cover?
-                                (conj promises
-                                      (copy-file (str dir "/" image)
-                                                 (str episode-dir "/" image)))
-                                promises)))))))
-             (get state :episodes))))))
+      (.then (rmdir output-dir)
+             (fn []
+               (promise-serial
+                 (map (fn [dir]
+                        #(mkdir dir))
+                      (apply sorted-set
+                             (reduce
+                               (fn [m {:keys [dest]}]
+                                 (clojure.set/union m (get-paths (.dirname path dest))))
+                               #{}
+                               site-files))))))
+      #(write-files! site-files))))
 
 (defn build! [options]
   (.then (load-site! options)
