@@ -130,7 +130,7 @@
                       :as config}]
   [:item
     [:title title]
-    [:description description]
+    [:description (str "<![CDATA[" description "]]>")]
     ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
     [:pubDate published-at]
     [:enclosure {:url url
