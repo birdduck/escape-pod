@@ -16,7 +16,6 @@
 (def mime-types (nodejs/require "mime-types"))
 (def moment (nodejs/require "moment-timezone"))
 (def rimraf (nodejs/require "rimraf"))
-(def taglib (nodejs/require "taglib2"))
 
 (nodejs/enable-util-print!)
 
@@ -125,7 +124,7 @@
                                               (- (inc idx) @offset))}))
                           (reverse episodes)))))
 
-(defn episode->item [{:keys [base-url description explicit? filename mime-type published-at tags title url]
+(defn episode->item [{:keys [base-url description explicit? filename length mime-type published-at title url]
                       :or {url (str base-url "/episodes/" (str/uslug title) "/" filename)}
                       :as config}]
   [:item
@@ -134,7 +133,7 @@
     ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
     [:pubDate published-at]
     [:enclosure {:url url
-                 :length (get tags :length)
+                 :length length
                  :type mime-type}]
     [:guid url]])
 
@@ -303,12 +302,11 @@
                   conf
                   {:cover? (.existsSync fs (str dir "/" image))
                    :dir dir
+                   :length (.-size (.statSync fs (str dir "/" filename)))
                    :mime-type (.lookup mime-types filename)
                    :notes (when (.existsSync fs (str dir "/notes.md"))
                             (.readFileSync fs (str dir "/notes.md") "utf8"))
-                   :origin (str dir "/" filename)
-                   :tags (js->clj (.readTagsSync taglib (str dir "/" filename))
-                                  :keywordize-keys true)}))))
+                   :origin (str dir "/" filename)}))))
 
 (defn load-episodes! [source]
   (.then (get-directories source)
