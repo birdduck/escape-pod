@@ -1,8 +1,8 @@
 (defproject escape-pod "0.0.1"
   :dependencies [[cljsjs/nodejs-externs "1.0.4-1"]
                  [cljsjs/twemoji "2.4.0-0"]
-                 [funcool/cuerdas "2.0.5"]
-                 [garden "1.3.5"]
+                 [funcool/cuerdas "2.0.6"]
+                 [garden "1.3.6"]
                  [hiccups "0.3.0"]
                  [markdown-clj "1.0.2"
                   :exclusions [org.clojure/clojure]]

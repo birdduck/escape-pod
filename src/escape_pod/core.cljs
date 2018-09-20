@@ -10,12 +10,11 @@
             [hiccups.runtime :as hiccupsrt]
             [markdown.core :as md]))
 
-(def fs (nodejs/require "fs"))
+(def fs (nodejs/require "fs-extra"))
 (def path (nodejs/require "path"))
 (def favicons (nodejs/require "favicons"))
 (def mime-types (nodejs/require "mime-types"))
 (def moment (nodejs/require "moment-timezone"))
-(def rimraf (nodejs/require "rimraf"))
 
 (nodejs/enable-util-print!)
 
@@ -60,20 +59,10 @@
                           (res)))))))
 
 (defn rmdir [path]
-  (js/Promise.
-    (fn [res rej]
-      (rimraf path (fn [err]
-                     (if err
-                       (rej err)
-                       (res)))))))
+  (.remove fs path))
 
-(defn copy-file [source destination]
-  (js/Promise.
-    (fn [res rej]
-      (.copyFile fs source destination (fn [err]
-                                         (if err
-                                           (rej err)
-                                           (res)))))))
+(defn copy [source destination]
+  (.copy fs source destination))
 
 (defn is-file? [source]
   (.isFile (.lstatSync fs source)))
@@ -94,7 +83,12 @@
                                                  files))))))))))
 
 (defn get-files! [source]
-  (get-fs-objects! is-file? source))
+  (get-fs-objects!
+    #(and
+       (not= "site/episodes" %)
+       (or (is-file? %)
+           (is-directory? %)))
+    source))
 
 (defn get-directories [source]
   (get-fs-objects! is-directory? source))
@@ -348,7 +342,7 @@
     (map
       (fn [{:keys [content dest operation src]}]
         (condp = operation
-          :copy (copy-file src dest)
+          :copy (copy src dest)
           :write (write-file! dest content)))
       files)))
 
