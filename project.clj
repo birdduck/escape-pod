@@ -4,7 +4,7 @@
                  [funcool/cuerdas "2.0.6"]
                  [garden "1.3.6"]
                  [hiccups "0.3.0"]
-                 [markdown-clj "1.0.2"
+                 [markdown-clj "1.0.3"
                   :exclusions [org.clojure/clojure]]
                  [org.clojure/clojure "1.9.0"]
                  [org.clojure/clojurescript "1.10.339"]
