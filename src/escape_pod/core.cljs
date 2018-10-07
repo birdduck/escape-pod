@@ -30,39 +30,15 @@
                      {}
                      attrs)]))
 
-(defn read-file! [path]
-  (js/Promise.
-    (fn [res rej]
-      (.readFile fs path "utf8" (fn [err data]
-                                  (if err
-                                    (rej err)
-                                    (res data)))))))
-
-(defn write-file! [path contents]
-  (js/Promise.
-    (fn [res rej]
-      (.writeFile fs path contents (fn [err]
-                                     (if err
-                                       (rej err)
-                                       (res)))))))
+(defn read-file! [path] (.readFile fs path "utf8"))
+(defn write-file! [path contents] (.writeFile fs path contents))
+(defn mkdir! [path] (.mkdir fs path))
+(defn rmdir! [path] (.remove fs path))
+(defn copy! [source destination] (.copy fs source destination))
 
 (defn read-edn! [path]
   (.then (read-file! path)
          #(reader/read-string %)))
-
-(defn mkdir [path]
-  (js/Promise.
-    (fn [res rej]
-      (.mkdir fs path (fn [err]
-                        (if err
-                          (rej err)
-                          (res)))))))
-
-(defn rmdir [path]
-  (.remove fs path))
-
-(defn copy [source destination]
-  (.copy fs source destination))
 
 (defn is-file? [source]
   (.isFile (.lstatSync fs source)))
@@ -73,14 +49,11 @@
 (defn get-fs-objects!
   ([source] (get-fs-objects! identity source))
   ([pred source]
-   (js/Promise.
-     (fn [res rej]
-       (.readdir fs source (fn [err files]
-                             (if err
-                               (rej err)
-                               (res (filter pred
-                                            (map #(.join path source %)
-                                                 files))))))))))
+   (.then (.readdir fs source)
+          (fn [files]
+            (filter pred
+                    (map #(.join path source %)
+                         files))))))
 
 (defn get-files! [source]
   (get-fs-objects!
@@ -342,7 +315,7 @@
     (map
       (fn [{:keys [content dest operation src]}]
         (condp = operation
-          :copy (copy src dest)
+          :copy (copy! src dest)
           :write (write-file! dest content)))
       files)))
 
@@ -391,11 +364,11 @@
                        []
                        (get state :episodes)))]
     (.then
-      (.then (rmdir output-dir)
+      (.then (rmdir! output-dir)
              (fn []
                (promise-serial
                  (map (fn [dir]
-                        #(mkdir dir))
+                        #(mkdir! dir))
                       (apply sorted-set
                              (reduce
                                (fn [m {:keys [dest]}]
