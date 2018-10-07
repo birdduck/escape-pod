@@ -2,7 +2,7 @@
   (:require-macros [hiccups.core :as hiccups :refer [html]])
   (:require [cljs.nodejs :as nodejs]
             [cljs.reader :as reader]
-            [cljs.tools.cli :refer [parse-opts]]
+            [clojure.tools.cli :refer [parse-opts]]
             [cljsjs.twemoji]
             [cuerdas.core :as str]
             [garden.core :refer [css]]
