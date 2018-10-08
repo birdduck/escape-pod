@@ -8,7 +8,8 @@
             [garden.core :refer [css]]
             [goog.object :as gobj]
             [hiccups.runtime :as hiccupsrt]
-            [markdown.core :as md]))
+            [markdown.core :as md]
+            [promesa.core :as p :refer-macros [alet]]))
 
 (def fs (nodejs/require "fs-extra"))
 (def path (nodejs/require "path"))
@@ -37,7 +38,7 @@
 (defn copy! [source destination] (.copy fs source destination))
 
 (defn read-edn! [path]
-  (.then (read-file! path)
+  (p/then (read-file! path)
          #(reader/read-string %)))
 
 (defn is-file? [source]
@@ -49,11 +50,11 @@
 (defn get-fs-objects!
   ([source] (get-fs-objects! identity source))
   ([pred source]
-   (.then (.readdir fs source)
-          (fn [files]
-            (filter pred
-                    (map #(.join path source %)
-                         files))))))
+   (p/then (.readdir fs source)
+           (fn [files]
+             (filter pred
+                     (map #(.join path source %)
+                          files))))))
 
 (defn get-files! [source]
   (get-fs-objects!
@@ -231,8 +232,8 @@
           episodes)]]])
 
 (defn generate-manifest [{:keys [url cover? image title description] :or {image "cover.jpg"}}]
-  (js/Promise.
-    (fn [res rej]
+  (p/promise
+    (fn [resolve reject]
       (favicons (str "site/" image)
                 #js {:appName title
                      :appDescription description
@@ -241,46 +242,45 @@
                      :url url}
                 (fn [err response]
                   (if err
-                    (rej err)
-                    (res {:resources (map (fn [resource]
-                                            {:name (gobj/get resource "name")
-                                             :contents (gobj/get resource "contents")})
-                                          (concat (gobj/get response "images")
-                                                  (gobj/get response "files")))
-                          :elements (map (fn [html]
-                                           (let [[tag attributes] (html->hiccup html)]
-                                             [tag (reduce (fn [o k]
-                                                            (let [v (get attributes k)]
-                                                              (merge o (hash-map k (if (str/starts-with? v "/")
-                                                                                     (str url v)
-                                                                                     v)))))
-                                                          {}
-                                                          (keys attributes))]))
-                                         (gobj/get response "html"))})))))))
+                    (reject err)
+                    (resolve
+                      {:resources (map (fn [resource]
+                                         {:name (gobj/get resource "name")
+                                          :contents (gobj/get resource "contents")})
+                                       (concat (gobj/get response "images")
+                                               (gobj/get response "files")))
+                       :elements (map (fn [html]
+                                        (let [[tag attributes] (html->hiccup html)]
+                                          [tag (reduce (fn [o k]
+                                                         (let [v (get attributes k)]
+                                                           (merge o (hash-map k (if (str/starts-with? v "/")
+                                                                                  (str url v)
+                                                                                  v)))))
+                                                       {}
+                                                       (keys attributes))]))
+                                      (gobj/get response "html"))})))))))
 
 (defn load-episode! [dir source]
-  (.then (read-edn! (str dir source))
-         (fn [{:keys [image filename]
-               :or {image "cover.jpg"
-                    filename "episode.mp3"}
-               :as conf}]
-           (merge {:filename filename
-                   :image image}
-                  conf
-                  {:cover? (.existsSync fs (str dir "/" image))
-                   :dir dir
-                   :length (.-size (.statSync fs (str dir "/" filename)))
-                   :mime-type (.lookup mime-types filename)
-                   :notes (when (.existsSync fs (str dir "/notes.md"))
-                            (.readFileSync fs (str dir "/notes.md") "utf8"))
-                   :origin (str dir "/" filename)}))))
+  (p/then (read-edn! (str dir source))
+          (fn [{:keys [image filename]
+                :or {image "cover.jpg"
+                     filename "episode.mp3"}
+                :as conf}]
+            (merge {:filename filename
+                    :image image}
+                   conf
+                   {:cover? (.existsSync fs (str dir "/" image))
+                    :dir dir
+                    :length (.-size (.statSync fs (str dir "/" filename)))
+                    :mime-type (.lookup mime-types filename)
+                    :notes (when (.existsSync fs (str dir "/notes.md"))
+                             (.readFileSync fs (str dir "/notes.md") "utf8"))
+                    :origin (str dir "/" filename)}))))
 
 (defn load-episodes! [source]
-  (.then (get-directories source)
+  (p/then (get-directories source)
          (fn [directories]
-           (.then (js/Promise.all
-                    (map #(load-episode! % "/config.edn") 
-                         directories))
+           (p/then (p/all (map #(load-episode! % "/config.edn") directories))
                   (fn [episodes]
                     (episodes-tx
                       (reverse (sort-by #(js/Date. (get % :published-at))
@@ -291,41 +291,30 @@
        (html (markup state))))
 
 (defn load-site! [{:keys [config]}]
-  (.then
-    (.then
-      (js/Promise.all
-        [(read-edn! config)
-         (get-files! "site")
-         (load-episodes! "site/episodes")])
-      (fn [[config files episodes]]
-        (.then (generate-manifest config)
-               (fn [manifest]
-                 {:config config :episodes episodes :files files :manifest manifest}))))
-    (fn [{:keys [config episodes files manifest]}]
-      (let [image (get config :image "cover.jpg")
-            state (merge config {:cover? (and image (.existsSync fs (str "site/" image)))
-                                 :manifest manifest
-                                 :episodes episodes})]
-        {:state state
-         :files files
-         :manifest manifest}))))
+  (p/then (p/all [(read-edn! config)
+                  (get-files! "site")
+                  (load-episodes! "site/episodes")])
+          (fn [[config files episodes]]
+            (p/alet [manifest (p/await (generate-manifest config))
+                     image (get config :image "cover.jpg")
+                     state (merge config {:cover? (and image (.existsSync fs (str "site/" image)))
+                                          :manifest manifest
+                                          :episodes episodes})]
+              {:state state :files files :manifest manifest}))))
 
 (defn write-files! [files]
-  (js/Promise.all
-    (map
-      (fn [{:keys [content dest operation src]}]
-        (condp = operation
-          :copy (copy! src dest)
-          :write (write-file! dest content)))
-      files)))
+  (p/all (map (fn [{:keys [content dest operation src]}]
+                (condp = operation
+                  :copy (copy! src dest)
+                  :write (write-file! dest content)))
+              files)))
 
 (defn promise-serial [fns]
-  (reduce
-    (fn [p f]
-      (.then p (fn [result]
-                 (.then (f) #(conj result %)))))
-      (js/Promise.resolve [])
-      fns))
+  (reduce (fn [prm f]
+            (p/then prm (fn [result]
+                          (p/then (f) #(conj result %)))))
+          (p/promise [])
+          fns))
 
 (defn write-site! [{:keys [state manifest files]}
                     {:keys [output-dir] :or {output-dir "./www"}}]
@@ -363,8 +352,8 @@
                                       :dest (.join path episode-output-dir image)}]))))
                        []
                        (get state :episodes)))]
-    (.then
-      (.then (rmdir! output-dir)
+    (p/then
+      (p/then (rmdir! output-dir)
              (fn []
                (promise-serial
                  (map (fn [dir]
@@ -378,8 +367,8 @@
       #(write-files! site-files))))
 
 (defn build! [options]
-  (.then (load-site! options)
-         #(write-site! % options)))
+  (p/then (load-site! options)
+          #(write-site! % options)))
 
 (def cli-options
   [["-c" "--config PATH" "Configuration path"
