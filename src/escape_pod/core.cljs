@@ -11,13 +11,15 @@
             [markdown.core :as md]
             [promesa.core :as p :refer-macros [alet]]))
 
+(nodejs/enable-util-print!)
+
 (def fs (nodejs/require "fs-extra"))
 (def path (nodejs/require "path"))
 (def favicons (nodejs/require "favicons"))
 (def mime-types (nodejs/require "mime-types"))
 (def moment (nodejs/require "moment-timezone"))
-
-(nodejs/enable-util-print!)
+; TODO figure out if this can be externed as a function
+(def smartypants (.-smartypants (nodejs/require "smartypants")))
 
 (defn emojify [s]
   (.parse js/twemoji s))
@@ -145,7 +147,7 @@
      [:a.link.dim.black {:href (str base-url "/episodes/" (str/uslug title))} title]]
     [:h3.f6.ma0.pt2.mid-gray (str "Episode #" number " published " (.format (.tz (moment (js/Date. published-at)) (.guess (.-tz moment))) "LLL z"))]]
    [:section
-    [:p.f6.f5-ns.lh-copy.ph2.pv3.ma0.bg-white (emojify description)]
+    [:p.f6.f5-ns.lh-copy.ph2.pv3.ma0.bg-white (emojify (smartypants description))]
     (when notes
       [:section.f8.f7-ns.lh-copy.ph2.pb2.ma0.bg-white
        [:h4.ttu.ma0.mid-gray "Notes"]

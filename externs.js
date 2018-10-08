@@ -1,5 +1,9 @@
-var taglib2 = {};
-taglib2.readTagsSync = function () {};
+var smartypants = function (str, options) {};
+smartypants.smartypants = function (str, options) {};
+smartypants.smartquotes = function (str, options) {};
+smartypants.smartdashes = function (str, options) {};
+smartypants.smartellipses = function (str, options) {};
+smartypants.smartypantsu = function (str, options) {};
 
 var moment = function () {};
 moment.tz = {};
