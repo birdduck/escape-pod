@@ -5,6 +5,8 @@ smartypants.smartdashes = function (str, options) {};
 smartypants.smartellipses = function (str, options) {};
 smartypants.smartypantsu = function (str, options) {};
 
+var imagemin = function (input, output, options) {};
+
 var moment = function () {};
 moment.tz = {};
 moment.tz.guess = function () {};

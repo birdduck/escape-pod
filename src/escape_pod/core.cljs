@@ -20,6 +20,9 @@
 (def moment (nodejs/require "moment-timezone"))
 ; TODO figure out if this can be externed as a function
 (def smartypants (.-smartypants (nodejs/require "smartypants")))
+(def imagemin (nodejs/require "imagemin"))
+(def imagemin-jpegtran (nodejs/require "imagemin-jpegtran"))
+(def imagemin-optipng (nodejs/require "imagemin-optipng"))
 
 (defn emojify [s]
   (.parse js/twemoji s))
@@ -304,11 +307,28 @@
                                           :episodes episodes})]
               {:state state :files files :manifest manifest}))))
 
+(defn optimize-image! [file, output-dir]
+  (imagemin #js [file]
+            output-dir
+            (clj->js {:plugins [(imagemin-jpegtran) (imagemin-optipng)]})))
+
+(defn optimize-image-buffer! [buffer destination]
+  (imagemin.buffer buffer
+                   (clj->js {:plugins [(imagemin-jpegtran) (imagemin-optipng)]})))
+
+(defn optimizable? [file-path]
+  (contains? #{".jpg" ".png"} (.extname path file-path)))
+
 (defn write-files! [files]
   (p/all (map (fn [{:keys [content dest operation src]}]
                 (condp = operation
-                  :copy (copy! src dest)
-                  :write (write-file! dest content)))
+                  :copy (if (optimizable? src)
+                          (optimize-image! src (.dirname path dest))
+                          (copy! src dest))
+                  :write (if (optimizable? dest)
+                           (p/then (optimize-image-buffer! content dest)
+                                   #(write-file! dest %))
+                           (write-file! dest content))))
               files)))
 
 (defn promise-serial [fns]
@@ -319,7 +339,7 @@
           fns))
 
 (defn write-site! [{:keys [state manifest files]}
-                    {:keys [output-dir] :or {output-dir "./www"}}]
+                   {:keys [output-dir] :or {output-dir "./www"}}]
   (let [site-files (concat
                      (map (fn [f]
                             {:operation :copy
