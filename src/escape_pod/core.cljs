@@ -21,7 +21,7 @@
 ; TODO figure out if this can be externed as a function
 (def smartypants (.-smartypants (nodejs/require "smartypants")))
 (def imagemin (nodejs/require "imagemin"))
-(def imagemin-jpegtran (nodejs/require "imagemin-jpegtran"))
+(def imagemin-mozjpeg (nodejs/require "imagemin-mozjpeg"))
 (def imagemin-optipng (nodejs/require "imagemin-optipng"))
 
 (defn emojify [s]
@@ -307,14 +307,16 @@
                                           :episodes episodes})]
               {:state state :files files :manifest manifest}))))
 
+(def image-optimization-plugins (clj->js [(imagemin-mozjpeg #js {:quality 80})
+                                          (imagemin-optipng)]) )
+
 (defn optimize-image! [file, output-dir]
   (imagemin #js [file]
             output-dir
-            (clj->js {:plugins [(imagemin-jpegtran) (imagemin-optipng)]})))
+            image-optimization-plugins))
 
-(defn optimize-image-buffer! [buffer destination]
-  (imagemin.buffer buffer
-                   (clj->js {:plugins [(imagemin-jpegtran) (imagemin-optipng)]})))
+(defn optimize-image-buffer! [buffer]
+  (imagemin.buffer buffer image-optimization-plugins))
 
 (defn optimizable? [file-path]
   (contains? #{".jpg" ".png"} (.extname path file-path)))
@@ -326,7 +328,7 @@
                           (optimize-image! src (.dirname path dest))
                           (copy! src dest))
                   :write (if (optimizable? dest)
-                           (p/then (optimize-image-buffer! content dest)
+                           (p/then (optimize-image-buffer! content)
                                    #(write-file! dest %))
                            (write-file! dest content))))
               files)))
