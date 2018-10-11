@@ -7,7 +7,7 @@
                  [hiccups "0.3.0"]
                  [markdown-clj "1.0.3"
                   :exclusions [org.clojure/clojure]]
-                 [org.clojure/clojure "1.9.0"]
+                 [org.clojure/clojure "1.10.0-RC1"]
                  [org.clojure/clojurescript "1.10.339"]
                  [org.clojure/tools.cli "0.4.1"]]
 
