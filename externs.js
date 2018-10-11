@@ -7,6 +7,9 @@ smartypants.smartypantsu = function (str, options) {};
 
 var imagemin = function (input, output, options) {};
 
+var musicMetadata = {};
+musicMetadata.parseFile = function (filePath, opts) {};
+
 var moment = function () {};
 moment.tz = {};
 moment.tz.guess = function () {};

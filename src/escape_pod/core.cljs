@@ -18,6 +18,7 @@
 (def favicons (nodejs/require "favicons"))
 (def mime-types (nodejs/require "mime-types"))
 (def moment (nodejs/require "moment-timezone"))
+(def music-metadata (nodejs/require "music-metadata"))
 ; TODO figure out if this can be externed as a function
 (def smartypants (.-smartypants (nodejs/require "smartypants")))
 (def imagemin (nodejs/require "imagemin"))
@@ -26,6 +27,21 @@
 
 (defn emojify [s]
   (.parse js/twemoji s))
+
+(defn seconds->interval [n]
+  (let [hours (js/Math.floor (/ n (* 60 60)))
+        minutes (js/Math.floor (/ (- n (* hours 3600)) 60))
+        seconds (js/Math.round (- n (* minutes 60) (* hours 3600)))]
+    (str/join ":"
+              (reduce (fn [m t]
+                        (if (and (zero? t) (empty? m))
+                          m
+                          (conj m (str (when (and (< t 10)
+                                                  (not (empty? m)))
+                                         0)
+                                       t))))
+                      []
+                      [hours minutes seconds]))))
 
 (defn html->hiccup [s]
   (let [tag (subs (first (str/split s #"\s+")) 1)
@@ -97,13 +113,14 @@
                                               (- (inc idx) @offset))}))
                           (reverse episodes)))))
 
-(defn episode->item [{:keys [base-url description explicit? filename length mime-type published-at title url]
+(defn episode->item [{:keys [base-url description duration explicit? filename length mime-type published-at title url]
                       :or {url (str base-url "/episodes/" (str/uslug title) "/" filename)}
                       :as config}]
   [:item
     [:title title]
     [:description (str "<![CDATA[" description "]]>")]
     ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
+    ["itunes:duration" duration]
     [:pubDate published-at]
     [:enclosure {:url url
                  :length length
@@ -266,21 +283,26 @@
                                       (gobj/get response "html"))})))))))
 
 (defn load-episode! [dir source]
-  (p/then (read-edn! (str dir source))
-          (fn [{:keys [image filename]
-                :or {image "cover.jpg"
-                     filename "episode.mp3"}
-                :as conf}]
-            (merge {:filename filename
-                    :image image}
-                   conf
-                   {:cover? (.existsSync fs (str dir "/" image))
-                    :dir dir
-                    :length (.-size (.statSync fs (str dir "/" filename)))
-                    :mime-type (.lookup mime-types filename)
-                    :notes (when (.existsSync fs (str dir "/notes.md"))
-                             (.readFileSync fs (str dir "/notes.md") "utf8"))
-                    :origin (str dir "/" filename)}))))
+  (-> (read-edn! (str dir source))
+      (p/then (fn [{:keys [image filename]
+                    :or {image "cover.jpg" filename "episode.mp3"}
+                    :as conf}]
+                (merge {:filename filename
+                        :image image}
+                       conf
+                       {:cover? (.existsSync fs (str dir "/" image))
+                        :dir dir
+                        :length (.-size (.statSync fs (str dir "/" filename)))
+                        :mime-type (.lookup mime-types filename)
+                        :notes (when (.existsSync fs (str dir "/notes.md"))
+                                 (.readFileSync fs (str dir "/notes.md") "utf8"))
+                        :origin (str dir "/" filename)})))
+      (p/then (fn [{:keys [filename] :as conf}]
+                (p/alet [metadata (p/await (music-metadata.parseFile (str dir "/" filename)
+                                                                     #js {:duration true
+                                                                          :skipCovers true}))]
+                  (merge {:duration (seconds->interval (.. metadata -format -duration))}
+                         conf))))))
 
 (defn load-episodes! [source]
   (p/then (get-directories source)
