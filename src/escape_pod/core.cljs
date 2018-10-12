@@ -127,6 +127,13 @@
                  :type mime-type}]
     [:guid url]])
 
+; NOTE we support arbitrary depth for categories, but iTunes accepts only two
+(defn category->el [category]
+  (if (vector? category)
+    ["itunes:category" {:text (first category)}
+     (map category->el (rest category))]
+    (recur [category])))
+
 (defn rss-feed [{:keys [cover? categories description email episodes explicit? language title author url image]
                  :or {author title
                       image "cover.jpg"
@@ -150,8 +157,7 @@
       ["itunes:image" {:href (str url "/" image)}])
     (when cover?
       ["webfeeds:icon" (str url "/" image)])
-    (for [category categories]
-      ["itunes:category" {:text category}])
+    (map category->el categories)
     (map (fn [episode]
            (episode->item (merge episode {:base-url url})))
          episodes)]])
