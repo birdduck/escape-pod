@@ -167,7 +167,7 @@
                          :as config}]
   [:article.center-ns.mw6-ns.hidden.mv4.mh3.ba.b--near-white
    (when cover?
-     [:img.db.mv0.w-100 {:src (str base-url "/episodes/" (str/uslug title) "/" image)}])
+     [:img.db.mv0.w-100 {:src (str base-url "/episodes/" (str/uslug title) "/" image) :alt (str "Episode #" number " cover")}])
    [:section.ph2.pv3.ma0.bg-near-white
     [:h2.f5.ma0
      [:a.link.dim.black {:href (str base-url "/episodes/" (str/uslug title))} title]]
