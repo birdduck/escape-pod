@@ -7,8 +7,8 @@
                  [hiccups "0.3.0"]
                  [markdown-clj "1.0.5"
                   :exclusions [org.clojure/clojure]]
-                 [org.clojure/clojure "1.10.0-beta5"]
-                 [org.clojure/clojurescript "1.10.439"]
+                 [org.clojure/clojure "1.10.0"]
+                 [org.clojure/clojurescript "1.10.520"]
                  [org.clojure/tools.cli "0.4.1"]]
 
   :plugins [[lein-cljsbuild "1.1.7"]]
