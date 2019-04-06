@@ -16,6 +16,7 @@
 (def fs (nodejs/require "fs-extra"))
 (def path (nodejs/require "path"))
 (def favicons (nodejs/require "favicons"))
+(def humanize-url (nodejs/require "humanize-url"))
 (def linkify (nodejs/require "linkifyjs"))
 (def linkify-html (nodejs/require "linkifyjs/html"))
 (def mime-types (nodejs/require "mime-types"))
@@ -23,6 +24,7 @@
 (def music-metadata (nodejs/require "music-metadata"))
 ; TODO figure out if this can be externed as a function
 (def smartypants (.-smartypants (nodejs/require "smartypants")))
+(def truncate-url (nodejs/require "truncate-url"))
 (def imagemin (nodejs/require "imagemin"))
 (def imagemin-mozjpeg (nodejs/require "imagemin-mozjpeg"))
 (def imagemin-optipng (nodejs/require "imagemin-optipng"))
@@ -175,7 +177,14 @@
      [:a.link.dim.black {:href (str base-url "/episodes/" (str/uslug title))} title]]
     [:h3.f6.ma0.pt2.mid-gray (str "Episode #" number " published " (.format (.tz (moment (js/Date. published-at)) (.guess (.-tz moment))) "LLL z"))]]
    [:section
-    [:p.f6.f5-ns.lh-copy.ph2.pv3.ma0.bg-white (-> description linkify-html smartypants emojify)]
+    [:p.f6.f5-ns.lh-copy.ph2.pv3.ma0.bg-white
+     (-> (linkify-html description
+                       #js {:format (fn [value type]
+                                      (if (= type "url")
+                                        (truncate-url (humanize-url value) 30)
+                                        value))})
+         smartypants
+         emojify)]
     (when notes
       [:section.f8.f7-ns.lh-copy.ph2.pb2.ma0.bg-white
        [:h4.ttu.ma0.mid-gray "Notes"]
