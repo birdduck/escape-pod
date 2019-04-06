@@ -117,12 +117,14 @@
                                               (- (inc idx) @offset))}))
                           (reverse episodes)))))
 
-(defn episode->item [{:keys [base-url description duration explicit? filename length mime-type published-at title url]
+(defn episode->item [{:keys [base-url cover? description duration explicit? filename image length mime-type published-at title url]
                       :or {url (str base-url "/episodes/" (str/uslug title) "/" filename)}
                       :as config}]
   [:item
     [:title title]
     [:description (str "<![CDATA[" description "]]>")]
+    (when cover?
+      [:itunes:image {:href (str base-url "/episodes/" (str/uslug title) "/" image)}])
     ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
     ["itunes:duration" duration]
     [:pubDate published-at]
