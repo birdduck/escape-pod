@@ -11,6 +11,7 @@
     "imagemin": "^6.0.0",
     "imagemin-mozjpeg": "^8.0.0",
     "imagemin-optipng": "^6.0.0",
+    "linkifyjs": "^2.1.8",
     "mime-types": "^2.1.20",
     "moment": "^2.22.2",
     "moment-timezone": "^0.5.21",
