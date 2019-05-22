@@ -14,8 +14,8 @@
     "imagemin-optipng": "^6.0.0",
     "linkifyjs": "^2.1.8",
     "mime-types": "^2.1.24",
-    "moment": "^2.22.2",
-    "moment-timezone": "^0.5.21",
+    "moment": "^2.24.0",
+    "moment-timezone": "^0.5.25",
     "music-metadata": "^3.1.3",
     "smartypants": "^0.0.10",
     "truncate-url": "^1.0.0"
