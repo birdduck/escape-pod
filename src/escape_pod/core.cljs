@@ -192,7 +192,7 @@
        [:h4.ttu.ma0.mid-gray "Notes"]
        [:div (-> notes md/md->html emojify)]])]
    [:div.mh2.mb3
-    [:audio.w-100 {:controls "controls" :style "z-index: 0;"}
+    [:audio.w-100 {:controls "controls" :preload "metadata" :style "z-index: 0;"}
      [:source {:src url :type mime-type}]]]])
 
 (defn structured-data [{:keys [cover? filename image social title url] :or {image "cover.jpg"}}]
