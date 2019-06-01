@@ -6,7 +6,7 @@
     "escape-pod": "index.js"
   },
   "dependencies": {
-    "favicons": "^5.3.0",
+    "favicons": "^5.4.1",
     "fs-extra": "^7.0.0",
     "humanize-url": "^2.1.0",
     "imagemin": "^6.1.0",
