@@ -258,9 +258,11 @@
                     :title title
                     :href (str url "/rss/podcast.rss")}]
              (structured-data config)]
-            (when-some [site (get-in config [:social :twitter])]
-              (twitter-card (merge (first episodes)
-                                   {:base-url url :site (str "@" site)})))))
+            (concat [[:link {:rel "canonical"
+                             :href (str url "/episodes/" (str/uslug (:title (first episodes))))}]]
+                    (when-some [site (get-in config [:social :twitter])]
+                      (twitter-card (merge (first episodes)
+                                           {:base-url url :site (str "@" site)}))))))
    [:body.system-sans-serif
     [:section
      [:header.bg-white.fixed.w-100.ph3.pv3 {:style "z-index: 1;"}
