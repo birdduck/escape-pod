@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "favicons": "^5.4.1",
-    "fs-extra": "^8.0.1",
+    "fs-extra": "^8.1.0",
     "humanize-url": "^2.1.0",
     "imagemin": "^6.1.0",
     "imagemin-mozjpeg": "^8.0.0",
