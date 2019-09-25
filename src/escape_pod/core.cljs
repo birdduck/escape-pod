@@ -1,14 +1,11 @@
 (ns escape-pod.core
-  (:require-macros [hiccups.core :as hiccups :refer [html]])
   (:require [cljs.nodejs :as nodejs]
             [cljs.reader :as reader]
             [clojure.tools.cli :refer [parse-opts]]
-            [cljsjs.twemoji]
             [cuerdas.core :as str]
+            [escape-pod.templates :as templates]
             [garden.core :refer [css]]
             [goog.object :as gobj]
-            [hiccups.runtime :as hiccupsrt]
-            [markdown.core :as md]
             [promesa.core :as p :refer-macros [alet]]))
 
 (nodejs/enable-util-print!)
@@ -16,21 +13,12 @@
 (def fs (nodejs/require "fs-extra"))
 (def path (nodejs/require "path"))
 (def favicons (nodejs/require "favicons"))
-(def humanize-url (nodejs/require "humanize-url"))
-(def linkify (nodejs/require "linkifyjs"))
-(def linkify-html (nodejs/require "linkifyjs/html"))
 (def mime-types (nodejs/require "mime-types"))
 (def moment (nodejs/require "moment-timezone"))
 (def music-metadata (nodejs/require "music-metadata"))
-; TODO figure out if this can be externed as a function
-(def smartypants (.-smartypants (nodejs/require "smartypants")))
-(def truncate-url (nodejs/require "truncate-url"))
 (def imagemin (nodejs/require "imagemin"))
 (def imagemin-mozjpeg (nodejs/require "imagemin-mozjpeg"))
 (def imagemin-optipng (nodejs/require "imagemin-optipng"))
-
-(defn emojify [s]
-  (.parse js/twemoji s))
 
 (defn seconds->interval [n]
   (let [hours (js/Math.floor (/ n (* 60 60)))
@@ -117,112 +105,13 @@
                                               (- (inc idx) @offset))}))
                           (reverse episodes)))))
 
-(defn episode->item [{:keys [base-url cover? description duration explicit? filename image length mime-type published-at title url]
-                      :or {url (str base-url "/episodes/" (str/uslug title) "/" filename)}
-                      :as config}]
-  [:item
-    [:title title]
-    [:description (str "<![CDATA[" description "]]>")]
-    (when cover?
-      [:itunes:image {:href (str base-url "/episodes/" (str/uslug title) "/" image)}])
-    ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
-    ["itunes:duration" duration]
-    [:pubDate published-at]
-    [:enclosure {:url url
-                 :length length
-                 :type mime-type}]
-    [:guid url]])
-
-; NOTE we support arbitrary depth for categories, but iTunes accepts only two
-(defn category->el [category]
-  (if (vector? category)
-    ["itunes:category" {:text (first category)}
-     (map category->el (rest category))]
-    (recur [category])))
-
-(defn rss-feed [{:keys [cover? categories description email episodes explicit? language title author url image]
-                 :or {author title
-                      image "cover.jpg"
-                      language "en-us"}
-                 :as config}]
-  [:rss {:version "2.0"
-         "xmlns:googleplay" "http://www.google.com/schemas/play-podcasts/1.0"
-         "xmlns:itunes" "http://www.itunes.com/dtds/podcast-1.0.dtd"
-         "xmlns:webfeeds" "http://webfeeds.org/rss/1.0"}
-   [:channel
-    [:title title]
-    [:link url]
-    [:description description]
-    [:language language]
-    ["itunes:author" author]
-    ["itunes:owner"
-     ["itunes:email" email]]
-    ["itunes:subtitle" description]
-    ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
-    (when cover?
-      ["itunes:image" {:href (str url "/" image)}])
-    (when cover?
-      ["webfeeds:icon" (str url "/" image)])
-    (map category->el categories)
-    (map (fn [episode]
-           (episode->item (merge episode {:base-url url})))
-         episodes)]])
-
-(defn episode->article [{:keys [base-url cover? description explicit? filename image published-at mime-type notes number tags title url]
-                         :or {url (str base-url "/episodes/" (str/uslug title) "/" filename)}
-                         :as config}]
-  [:article.center-ns.mw6-ns.hidden.mv4.mh3.ba.b--near-white
-   (when cover?
-     [:img.db.mv0.w-100 {:src (str base-url "/episodes/" (str/uslug title) "/" image) :alt (str "Episode #" number " cover")}])
-   [:section.ph2.pv3.ma0.bg-near-white
-    [:h2.f5.ma0
-     [:a.link.dim.black {:href (str base-url "/episodes/" (str/uslug title))} title]]
-    [:h3.f6.ma0.pt2.mid-gray (str "Episode #" number " published " (.format (.tz (moment (js/Date. published-at)) (.guess (.-tz moment))) "LLL z"))]]
-   [:section
-    [:p.f6.f5-ns.lh-copy.ph2.pv3.ma0.bg-white
-     (-> (linkify-html description
-                       #js {:format (fn [value type]
-                                      (if (= type "url")
-                                        (truncate-url (humanize-url value) 30)
-                                        value))})
-         smartypants
-         emojify)]
-    (when notes
-      [:section.f8.f7-ns.lh-copy.ph2.pb2.ma0.bg-white
-       [:h4.ttu.ma0.mid-gray "Notes"]
-       [:div (-> notes md/md->html emojify)]])]
-   [:div.mh2.mb3
-    [:audio.w-100 {:controls "controls" :preload "metadata" :style "z-index: 0;"}
-     [:source {:src url :type mime-type}]]]])
-
-(defn structured-data [{:keys [cover? filename image social title url] :or {image "cover.jpg"}}]
-  [:script {:type "application/ld+json"}
-   (js/JSON.stringify
-     (clj->js (merge {"@context" "http://schema.org"
-                      "@type" "Organization"
-                      :name title
-                      :url url
-                      :sameAs (map (fn [channel]
-                                     (let [id (get social channel)]
-                                       (condp = channel
-                                         :twitter (str "https://twitter.com/" id)
-                                         :youtube (str "https://www.youtube.com/channel/" id))))
-                                   (keys social))}
-                     (when cover?
-                       {:logo (str url "/" image)}))))])
-
-(defn twitter-card [{:keys [base-url cover? filename image site title description mime-type]}]
-  [[:meta {:name "twitter:card" :content "summary"}]
-   [:meta {:name "twitter:site" :content site}]
-   [:meta {:name "twitter:creator" :content site}]
-   [:meta {:property "og:url" :content (str base-url "/episodes/" (str/uslug title))}]
-   [:meta {:property "og:title" :content title}]
-   [:meta {:property "og:description" :content description}]
-   [:meta {:property "og:audio" :content (str base-url "/episodes/" (str/uslug title) "/" filename)}]
-   [:meta {:property "og:audio:type" :content mime-type}]
-   (when cover?
-     [:meta {:property "og:image"
-             :content (str base-url "/episodes/" (str/uslug title) "/" image)}])])
+(defn rss-feed [{:keys [title] :as config}]
+  (templates/render "rss"
+    (merge {:author title
+            :image "cover.jpg"
+            :language "en-us"
+            'str str}
+           config)))
 
 (defn style []
   (css [:img.emoji {:height "1em"
@@ -230,49 +119,26 @@
                     :margin "0 .05em 0 .1em"
                     :vertical-align "-0.1em"}]))
 
-(defn markup [{:keys [description email episodes explicit? language manifest title author url]
-               :or {author title
-                    language "en-us"}
-               :as config}]
-  [:html {:lang language
-          :prefix "og: http://ogp.me/ns#"}
-   (apply conj
-          [:head
-           [:meta {:charset "utf-8"}]
-           [:meta {:http-equiv "x-ua-compatible" :content "ie=edge"}]
-           [:title (str title " | " (if (> (count episodes) 1)
-                                      description
-                                      (get (first episodes) :title) ))]
-           [:meta {:name "description" :content (if (> (count episodes) 1)
-                                                  description
-                                                  (get (first episodes) :description))}]
-           [:meta {:name "viewport" :content"width=device-width, initial-scale=1, shrink-to-fit=no"}]
-           [:link {:rel "stylesheet"
-                   :href "https://unpkg.com/tachyons@4.9.1/css/tachyons.min.css"}]]
-          (for [el (get manifest :elements)]
-            el)
-          [:style (style)]
-          (if (> (count episodes) 1)
-            [[:link {:rel "alternate"
-                    :type "application/rss+xml"
-                    :title title
-                    :href (str url "/rss/podcast.rss")}]
-             (structured-data config)]
-            (concat [[:link {:rel "canonical"
-                             :href (str url "/episodes/" (str/uslug (:title (first episodes))))}]]
-                    (when-some [site (get-in config [:social :twitter])]
-                      (twitter-card (merge (first episodes)
-                                           {:base-url url :site (str "@" site)}))))))
-   [:body.system-sans-serif
-    [:section
-     [:header.bg-white.fixed.w-100.ph3.pv3 {:style "z-index: 1;"}
-      [:h1.f1.f-4-ns.lh-solid.center.tc.mv0
-       [:a.link.dim.mid-gray {:href url} title]]
-      [:h2.f5.dark-gray.fw2.tc.tracked description]]]
-    [:section.pt6
-     (map (fn [episode]
-            (episode->article (merge episode {:base-url url})))
-          episodes)]]])
+(defn post [{:keys [episodes image title] :as config}]
+  (templates/render "post"
+    (merge {:author title
+            :language "en-us"
+            :image "cover.jpg"
+            :episode (first episodes)
+            :style style
+            'format-date (fn [date fmt]
+                          (.format (.tz (moment (js/Date. date)) (.guess (.-tz moment))) fmt))}
+           config)))
+
+(defn posts [{:keys [episodes image title] :as config}]
+  (templates/render "posts"
+    (merge {:author title
+            :language "en-us"
+            :image "cover.jpg"
+            :style style
+            'format-date (fn [date fmt]
+                          (.format (.tz (moment (js/Date. date)) (.guess (.-tz moment))) fmt))}
+           config)))
 
 (defn generate-manifest [{:keys [url cover? image title description] :or {image "cover.jpg"}}]
   (p/promise
@@ -334,10 +200,6 @@
                       (reverse (sort-by #(js/Date. (get % :published-at))
                                         episodes))))))))
 
-(defn render-html [state]
-  (str "<!DOCTYPE html>"
-       (html (markup state))))
-
 (defn load-site! [{:keys [config]}]
   (p/then (p/all [(read-edn! config)
                   (get-files! "site")
@@ -397,18 +259,18 @@
                              :dest (.join path output-dir (get resource :name))})
                           (get manifest :resources))
                      [{:operation :write
-                        :content (render-html state)
+                        :content (str "<!DOCTYPE html>" (posts state))
                         :dest (.join path output-dir "index.html")}
                       {:operation :write
                         :content (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-                                      (html (rss-feed state)))
+                                      (rss-feed state))
                         :dest (.join path output-dir "rss/podcast.rss")}]
                      (reduce
                        (fn [m {:keys [cover? dir filename image origin title] :as episode}]
                          (let [episode-output-dir (.join path output-dir "episodes" (str/uslug title))]
                            (concat m
                                    [{:operation :write
-                                     :content (render-html (merge state {:episodes [episode]}))
+                                     :content (str "<!DOCTYPE html>" (post (merge state {:episodes [episode]})))
                                      :dest (.join path episode-output-dir "index.html")}
                                     {:operation :copy
                                      :src origin
