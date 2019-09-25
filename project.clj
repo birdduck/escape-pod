@@ -3,7 +3,7 @@
                  [cljsjs/nodejs-externs "1.0.4-1"]
                  [cljsjs/twemoji "11.2.0-0"]
                  [funcool/cuerdas "2.2.0"]
-                 [funcool/promesa "2.0.1"]
+                 [funcool/promesa "3.0.0"]
                  [garden "1.3.6"]
                  [hiccups "0.3.0"]
                  [markdown-clj "1.10.0"
