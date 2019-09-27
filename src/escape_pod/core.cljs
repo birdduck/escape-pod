@@ -217,8 +217,8 @@
 
 (defn optimize-image! [file, output-dir]
   (imagemin #js [file]
-            output-dir
-            image-optimization-plugins))
+            (clj->js {:destination output-dir
+                      :plugins image-optimization-plugins})))
 
 (defn optimize-image-buffer! [buffer]
   (imagemin.buffer buffer image-optimization-plugins))
