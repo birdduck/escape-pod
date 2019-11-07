@@ -15,7 +15,7 @@
          [:h4.ttu.ma0.mid-gray "Notes"]
          [:div (-> notes md->html emojify)]])]
      [:div.mh2.mb3
-      [:audio.w-100 {:controls "controls" :preload "metadata" :style "z-index: 0;"}
+      [:audio.w-100 {:controls "controls" :preload "none" :style "z-index: 0;"}
        [:source {:src url :type mime-type}]]]]))
 
 [:html {:lang language
@@ -58,4 +58,7 @@
       [:h2.f5.dark-gray.fw2.tc.tracked description]]]
     [:section.pt6
      (map #(episode->article (merge % {:base-url url}))
-          episodes)]]]
+          episodes)
+     (when (some? next-page-url)
+       [:div.tc.pb4
+        [:a.link {:href next-page-url} "More Episodes..."]])]]]

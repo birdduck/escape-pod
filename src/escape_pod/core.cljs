@@ -258,10 +258,21 @@
                              :content (get resource :contents)
                              :dest (.join path output-dir (get resource :name))})
                           (get manifest :resources))
+                     (let [episodes (:episodes state)
+                           page-size (get state :page-size 20)
+                           pages (Math/floor (/ (count episodes) page-size))]
+                       (map-indexed
+                         (fn [idx page]
+                           (let [path-prefix (if (zero? idx) "" (str "./pages/" (inc idx)))]
+                             {:operation :write
+                              :content (str "<!DOCTYPE html>"
+                                            (posts (merge state
+                                                          {:episodes page
+                                                           :next-page-url (when (< idx pages)
+                                                                            (str (:url state) "/pages/" (+ idx 2)))})))
+                              :dest (.join path output-dir path-prefix "index.html")}))
+                         (partition-all page-size episodes)))
                      [{:operation :write
-                        :content (str "<!DOCTYPE html>" (posts state))
-                        :dest (.join path output-dir "index.html")}
-                      {:operation :write
                         :content (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                                       (rss-feed state))
                         :dest (.join path output-dir "rss/podcast.rss")}]
