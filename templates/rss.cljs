@@ -1,8 +1,11 @@
+(defn cdata [s]
+  (str "<![CDATA[" s "]]>"))
+
 (defn episode->item [{:keys [base-url cover? description duration explicit? filename image length mime-type published-at title] :as config}]
   (let [url (get config :url (str base-url "/episodes/" (uslug title) "/" filename))]
     [:item
-     [:title title]
-     [:description (str "<![CDATA[" description "]]>")]
+     [:title (cdata title)]
+     [:description (cdata description)]
     (when cover?
       [:itunes:image {:href (str base-url "/episodes/" (uslug title) "/" image)}])
     ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
@@ -25,14 +28,14 @@
          "xmlns:itunes" "http://www.itunes.com/dtds/podcast-1.0.dtd"
          "xmlns:webfeeds" "http://webfeeds.org/rss/1.0"}
  [:channel
-  [:title title]
+  [:title (cdata title)]
   [:link url]
-  [:description description]
+  [:description (cdata description)]
   [:language language]
   ["itunes:author" author]
   ["itunes:owner"
    ["itunes:email" email]]
-  ["itunes:subtitle" description]
+  ["itunes:subtitle" (cdata description)]
   ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
   (when cover?
     ["itunes:image" {:href (str url "/" image)}])
