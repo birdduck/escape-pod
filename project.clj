@@ -1,7 +1,7 @@
 (defproject escape-pod "0.0.1"
   :dependencies [[borkdude/sci "0.1.1-alpha.10"]
                  [cljsjs/nodejs-externs "1.0.4-1"]
-                 [cljsjs/twemoji "11.2.0-0"]
+                 [cljsjs/twemoji "12.1.5-0"]
                  [funcool/cuerdas "2.2.0"]
                  [funcool/promesa "3.0.0"]
                  [garden "1.3.9"]
