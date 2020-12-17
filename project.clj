@@ -9,7 +9,7 @@
                  [markdown-clj "1.10.5"
                   :exclusions [org.clojure/clojure]]
                  [org.clojure/clojure "1.10.0"]
-                 [org.clojure/clojurescript "1.10.520"]
+                 [org.clojure/clojurescript "1.10.764"]
                  [org.clojure/tools.cli "0.4.2"]]
 
   :plugins [[lein-cljsbuild "1.1.7"]]
