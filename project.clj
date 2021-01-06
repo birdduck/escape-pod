@@ -2,7 +2,7 @@
   :dependencies [[borkdude/sci "0.2.1-alpha.1"]
                  [cljsjs/nodejs-externs "1.0.4-1"]
                  [cljsjs/twemoji "12.1.5-0"]
-                 [funcool/cuerdas "2.2.0"]
+                 [funcool/cuerdas "2020.03.26-3"]
                  [funcool/promesa "3.0.0"]
                  [garden "1.3.9"]
                  [hiccups "0.3.0"]
