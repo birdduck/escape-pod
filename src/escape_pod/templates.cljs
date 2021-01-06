@@ -25,6 +25,7 @@
                                               value))})
    :md->html md/md->html
    :smartypants smartypants
+   :encode-uri js/encodeURI
    :uslug str/uslug})
 
 (defn resolve-template

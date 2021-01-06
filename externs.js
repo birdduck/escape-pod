@@ -19,6 +19,7 @@ var favicons = function (source, settings, callback) {};
 
 var fs = {};
 fs.copyFile = function (source, destination, callback) {};
+fs.ensureDir = function (dir, options, callback) {};
 
 var express = {};
 express.request.params = {};

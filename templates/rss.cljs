@@ -1,17 +1,21 @@
 (defn cdata [s]
   (str "<![CDATA[" s "]]>"))
 
-(defn episode->item [{:keys [base-url cover? description duration explicit? filename image length mime-type published-at title] :as config}]
-  (let [url (get config :url (str base-url "/episodes/" (uslug title) "/" filename))]
+(defn episode->item [{:keys [base-url cover? description duration explicit? filename image length mime-type notes published-at title] :as config}]
+  (let [url (encode-uri (get config :url (str base-url "/episodes/" (uslug title) "/" filename)))]
     [:item
      [:title (cdata title)]
      [:description (cdata description)]
+     #_ ["content:encoded" (-> (str description
+                                 (when notes
+                                   (str "\n\n" notes)))
+                            smartypants md->html emojify cdata)]
     (when cover?
-      [:itunes:image {:href (str base-url "/episodes/" (uslug title) "/" image)}])
+      [:itunes:image {:href (encode-uri (str base-url "/episodes/" (uslug title) "/" image))}])
     ["itunes:explicit" (if (true? explicit?) "Yes" "No")]
     ["itunes:duration" duration]
     [:pubDate published-at]
-    [:enclosure {:url url 
+    [:enclosure {:url url
                  :length length
                  :type mime-type}]
     [:guid url]]))
@@ -24,10 +28,14 @@
     (category->el [category])))
 
 [:rss {:version "2.0"
+         "xmlns:atom" "http://www.w3.org/2005/Atom"
          "xmlns:googleplay" "http://www.google.com/schemas/play-podcasts/1.0"
          "xmlns:itunes" "http://www.itunes.com/dtds/podcast-1.0.dtd"
          "xmlns:webfeeds" "http://webfeeds.org/rss/1.0"}
  [:channel
+  ["atom:link" {:href (str url "/rss/podcast.rss") :rel "self" :type "application/rss+xml"}]
+  (when (some? new-feed-url)
+    ["itunes:new-feed-url" new-feed-url])
   [:title (cdata title)]
   [:link url]
   [:description (cdata description)]
@@ -42,5 +50,5 @@
   (when cover?
     ["webfeeds:icon" (str url "/" image)])
   (map category->el categories)
-  (map #(episode->item (merge % {:base-url url})) 
+  (map #(episode->item (merge % {:base-url url}))
        episodes)]]

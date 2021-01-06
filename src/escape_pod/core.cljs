@@ -21,9 +21,9 @@
 (def imagemin-optipng (nodejs/require "imagemin-optipng"))
 
 (defn seconds->interval [n]
-  (let [hours (js/Math.floor (/ n (* 60 60)))
-        minutes (js/Math.floor (/ (- n (* hours 3600)) 60))
-        seconds (js/Math.round (- n (* minutes 60) (* hours 3600)))]
+  (let [hours (Math/floor (/ n (* 60 60)))
+        minutes (Math/floor (/ (- n (* hours 3600)) 60))
+        seconds (Math/floor (- n (* minutes 60) (* hours 3600)))]
     (str/join ":"
               (reduce (fn [m t]
                         (if (and (zero? t) (empty? m))
@@ -46,7 +46,7 @@
 
 (defn read-file! [path] (.readFile fs path "utf8"))
 (defn write-file! [path contents] (.writeFile fs path contents))
-(defn mkdir! [path] (.mkdir fs path))
+(defn mkdir! [path] (.ensureDir fs path))
 (defn rmdir! [path] (.remove fs path))
 (defn copy! [source destination] (.copy fs source destination))
 
@@ -110,6 +110,7 @@
     (merge {:author title
             :image "cover.jpg"
             :language "en-us"
+            :new-feed-url nil
             'str str}
            config)))
 
@@ -313,6 +314,8 @@
 (def cli-options
   [["-c" "--config PATH" "Configuration path"
     :default "./config.edn"]
+   ["-o" "--output-dir PATH" "Output directory path"
+    :default "./www"]
    ["-h" "--help"]])
 
 (defn validate-args [args]
