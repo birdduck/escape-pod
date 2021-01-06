@@ -4,7 +4,7 @@
                  [cljsjs/twemoji "12.1.5-0"]
                  [funcool/cuerdas "2020.03.26-3"]
                  [funcool/promesa "3.0.0"]
-                 [garden "1.3.9"]
+                 [garden "1.3.10"]
                  [hiccups "0.3.0"]
                  [markdown-clj "1.10.5"
                   :exclusions [org.clojure/clojure]]
