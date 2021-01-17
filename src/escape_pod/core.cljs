@@ -19,6 +19,7 @@
 (def imagemin (nodejs/require "imagemin"))
 (def imagemin-mozjpeg (nodejs/require "imagemin-mozjpeg"))
 (def imagemin-optipng (nodejs/require "imagemin-optipng"))
+(def rss-parser (nodejs/require "rss-parser"))
 
 (defn seconds->interval [n]
   (let [hours (Math/floor (/ n (* 60 60)))
@@ -170,21 +171,27 @@
                                                        (keys attributes))]))
                                       (gobj/get response "html"))})))))))
 
-(defn load-episode! [dir source]
+(defn load-episode! [site-config dir source]
   (-> (read-edn! (str dir source))
-      (p/then (fn [{:keys [image filename]
+      (p/then (fn [{:keys [image filename title]
                     :or {image "cover.jpg" filename "episode.mp3"}
                     :as conf}]
-                (merge {:filename filename
-                        :image image}
-                       conf
-                       {:cover? (.existsSync fs (str dir "/" image))
-                        :dir dir
-                        :length (.-size (.statSync fs (str dir "/" filename)))
-                        :mime-type (.lookup mime-types filename)
-                        :notes (when (.existsSync fs (str dir "/notes.md"))
-                                 (.readFileSync fs (str dir "/notes.md") "utf8"))
-                        :origin (str dir "/" filename)})))
+                (let [url (str (:url site-config) "/episodes/" (str/uslug title))
+                      cover-url (str url "/" image)
+                      episode-url (str url "/" filename)]
+                  (merge {:filename filename
+                          :image image
+                          :url url
+                          :cover-url cover-url
+                          :episode-url episode-url}
+                         conf
+                         {:cover? (.existsSync fs (str dir "/" image))
+                          :dir dir
+                          :length (.-size (.statSync fs (str dir "/" filename)))
+                          :mime-type (.lookup mime-types filename)
+                          :notes (when (.existsSync fs (str dir "/notes.md"))
+                                   (.readFileSync fs (str dir "/notes.md") "utf8"))
+                          :origin (str dir "/" filename)}))))
       (p/then (fn [{:keys [filename] :as conf}]
                 (p/alet [metadata (p/await (music-metadata.parseFile (str dir "/" filename)
                                                                      #js {:duration true
@@ -192,26 +199,73 @@
                   (merge {:duration (seconds->interval (.. metadata -format -duration))}
                          conf))))))
 
-(defn load-episodes! [source]
+(defn load-episodes! [config source]
   (p/then (get-directories source)
          (fn [directories]
-           (p/then (p/all (map #(load-episode! % "/config.edn") directories))
+           (p/then (p/all (map #(load-episode! config % "/config.edn") directories))
                   (fn [episodes]
                     (episodes-tx
                       (reverse (sort-by #(js/Date. (get % :published-at))
                                         episodes))))))))
 
+(defn load-local-episodes! [config source]
+  (p/then (get-directories source)
+         (fn [directories]
+           (p/all (map #(load-episode! config % "/config.edn") directories))
+           )))
+
+(defn load-remote-episodes!
+  [config url]
+  (let [parser (rss-parser.)]
+    (p/then
+      (.parseURL parser url)
+      (fn [feed]
+        (map (fn [item]
+               (let [itunes (gobj/get item "itunes")
+                     enclosure (gobj/get item "enclosure")
+                     title (gobj/get item "title")
+                     cover-url (gobj/get itunes "image")]
+                 {:title title
+                  :description (gobj/get item "content")
+                  :content-encoded (gobj/get item "content:encoded")
+                  :duration (gobj/get itunes "duration")
+                  :url (str (:url config) "/episodes/" (str/uslug title))
+                  :episode-url (gobj/get enclosure "url")
+                  :cover? (some? cover-url)
+                  :cover-url cover-url
+                  :length (gobj/get enclosure "length")
+                  :mime-type (gobj/get enclosure "type")
+                  :published-at (gobj/get item "pubDate")
+                  :remote? true}))
+             (gobj/get feed "items"))))))
+
+(defn load-remote-feeds!
+  [config urls]
+  (p/all (map #(load-remote-episodes! config %) urls)))
+
 (defn load-site! [{:keys [config]}]
-  (p/then (p/all [(read-edn! config)
-                  (get-files! "site")
-                  (load-episodes! "site/episodes")])
-          (fn [[config files episodes]]
-            (p/alet [manifest (p/await (generate-manifest config))
-                     image (get config :image "cover.jpg")
-                     state (merge config {:cover? (and image (.existsSync fs (str "site/" image)))
-                                          :manifest manifest
-                                          :episodes episodes})]
-              {:state state :files files :manifest manifest}))))
+  (p/alet [site-config (p/await (read-edn! config))
+           remotes (seq (get site-config :remotes))]
+    (p/then (p/all (cond-> [(get-files! "site")
+                            (load-local-episodes! site-config "site/episodes")]
+                     (seq? remotes) (conj (load-remote-feeds! site-config remotes))))
+            (fn [[files local-episodes remote-episodes]]
+              (p/alet [manifest (p/await (generate-manifest site-config))
+                       image (get site-config :image "cover.jpg")
+                       ; intermediate (reduce (fn [memo feed-episodes]
+                       ;                        (merge (group-by :episode-url feed-episodes) memo))
+                       ;                      (group-by :episode-url local-episodes)
+                       ;                      remote-episodes)
+                       episodes (->> remote-episodes
+                                     (reduce concat local-episodes)
+                                     (sort-by #(js/Date. (get % :published-at)))
+                                     reverse
+                                     episodes-tx)
+                       state (merge site-config
+                                    {:cover? (and image (.existsSync fs (str "site/" image)))
+                                     :manifest manifest
+                                     :episodes episodes})]
+                      {:state state :files files :manifest manifest})))))
 
 (def image-optimization-plugins (clj->js [(imagemin-mozjpeg #js {:quality 80})
                                           (imagemin-optipng)]) )
@@ -278,19 +332,22 @@
                                       (rss-feed state))
                         :dest (.join path output-dir "rss/podcast.rss")}]
                      (reduce
-                       (fn [m {:keys [cover? dir filename image origin title] :as episode}]
+                       (fn [m {:keys [cover? dir filename image origin remote? title]
+                               :or {remote? false}
+                               :as episode}]
                          (let [episode-output-dir (.join path output-dir "episodes" (str/uslug title))]
-                           (concat m
-                                   [{:operation :write
-                                     :content (str "<!DOCTYPE html>" (post (merge state {:episodes [episode]})))
-                                     :dest (.join path episode-output-dir "index.html")}
-                                    {:operation :copy
-                                     :src origin
-                                     :dest (.join path episode-output-dir filename)}]
-                                   (when cover?
-                                     [{:operation :copy
-                                      :src (.join path dir image)
-                                      :dest (.join path episode-output-dir image)}]))))
+                           (-> m
+                               (conj {:operation :write
+                                      :content (str "<!DOCTYPE html>" (post (merge state {:episodes [episode]})))
+                                      :dest (.join path episode-output-dir "index.html")})
+                               (cond-> (not remote?)
+                                 (conj {:operation :copy
+                                        :src origin
+                                        :dest (.join path episode-output-dir filename)}))
+                               (cond-> (and (not remote?) cover?)
+                                 (conj {:operation :copy
+                                        :src (.join path dir image)
+                                        :dest (.join path episode-output-dir image)})))))
                        []
                        (get state :episodes)))]
     (p/then

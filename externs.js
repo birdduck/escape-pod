@@ -28,3 +28,6 @@ express.request.site = {};
 express.request.episode = {};
 express.response.sendStatus = function (code) {};
 express.response.sendFile = function (path, callback) {};
+
+var rssParser = {};
+rssParser.parseURL = function (url) {};
