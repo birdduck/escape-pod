@@ -15,7 +15,7 @@
     "linkifyjs": "^2.1.9",
     "mime-types": "^2.1.27",
     "moment": "^2.29.1",
-    "moment-timezone": "^0.5.32",
+    "moment-timezone": "^0.5.35",
     "music-metadata": "^7.5.2",
     "smartypants": "^0.1.1",
     "truncate-url": "^1.0.0"
